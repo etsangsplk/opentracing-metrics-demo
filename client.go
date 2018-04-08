@@ -51,39 +51,40 @@ func main() {
 
 func runClient(tracer opentracing.Tracer) {
 	client := &http.Client{Transport: &nethttp.Transport{}}
-
 	t := time.NewTicker(100 * time.Millisecond)
-
 	for {
 		select {
 		case <-t.C:
-			// use function for extra scope
-			func() {
-				span, ctx := opentracing.StartSpanFromContext(context.Background(), "client")
-				span.SetBaggageItem("callpath", *name)
-				defer span.Finish()
-				if rand.Float64() < *failPct {
-					span.SetBaggageItem("fail", "true")
-				}
-
-				req, err := http.NewRequest("GET", "http://localhost:8080/ping", nil)
-				if err != nil {
-					log.Fatalf("bad request %s", err)
-				}
-				req = req.WithContext(ctx)
-
-				req, ht := nethttp.TraceRequest(tracer, req)
-				defer ht.Finish()
-
-				res, err := client.Do(req)
-				if err != nil {
-					log.Printf("failed request %s", err)
-				}
-				out, _ := ioutil.ReadAll(res.Body)
-				log.Printf("received response %d %s", res.StatusCode, string(out))
-			}()
+			callServer(tracer, client)
 		case <-stop:
 			return
 		}
 	}
+}
+
+func callServer(tracer opentracing.Tracer, client *http.Client) {
+	span, ctx := opentracing.StartSpanFromContext(context.Background(), "client")
+	span.SetBaggageItem("callpath", *name)
+	defer span.Finish()
+
+	// cheat a bit: use baggage to pass a signal that we have a misbehaving client
+	if rand.Float64() < *failPct {
+		span.SetBaggageItem("fail", "true")
+	}
+
+	req, err := http.NewRequest("GET", "http://localhost:8080/ping", nil)
+	if err != nil {
+		log.Fatalf("bad request %s", err)
+	}
+	req = req.WithContext(ctx)
+
+	req, ht := nethttp.TraceRequest(tracer, req)
+	defer ht.Finish()
+
+	res, err := client.Do(req)
+	if err != nil {
+		log.Printf("failed request %s", err)
+	}
+	out, _ := ioutil.ReadAll(res.Body)
+	log.Printf("received response %d %s", res.StatusCode, string(out))
 }
