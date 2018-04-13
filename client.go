@@ -31,6 +31,9 @@ func main() {
 
 	closer, err := jaeger.Configuration{
 		Sampler: &jaeger.SamplerConfig{Type: "const", Param: 1},
+		Reporter: &jaeger.ReporterConfig{
+			LogSpans: true,
+		},
 	}.InitGlobalTracer(*name)
 	if err != nil {
 		log.Fatalf("Failed to initialize Jaeger tracer %s", err)
@@ -52,6 +55,7 @@ func main() {
 func runClient(tracer opentracing.Tracer) {
 	client := &http.Client{Transport: &nethttp.Transport{}}
 	t := time.NewTicker(100 * time.Millisecond)
+	defer t.Stop()
 	for {
 		select {
 		case <-t.C:
@@ -87,4 +91,5 @@ func callServer(tracer opentracing.Tracer, client *http.Client) {
 	}
 	out, _ := ioutil.ReadAll(res.Body)
 	log.Printf("received response %d %s", res.StatusCode, string(out))
+	res.Body.Close()
 }
